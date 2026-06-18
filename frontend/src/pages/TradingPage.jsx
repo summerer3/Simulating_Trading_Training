@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Table, Button, Tag, Radio, message, Spin, Typography } from 'antd'
+import { Card, Table, Button, Tag, Radio, message, Spin, Typography, Popconfirm } from 'antd'
 import { dataAPI, sessionAPI } from '../api'
 import KLineChart from '../components/KLineChart'
 
@@ -328,7 +328,9 @@ function TradingPage({ user }) {
             <Radio.Button value={1.0}>全仓</Radio.Button>
             <Radio.Button value={0.5}>半仓</Radio.Button>
           </Radio.Group>
-          <Button size="small" danger onClick={endTraining}>结束</Button>
+          <Popconfirm title="确认结束训练？" description="结束后将显示训练结果总结" onConfirm={endTraining} okText="确认" cancelText="取消">
+            <Button size="small" danger>结束</Button>
+          </Popconfirm>
         </div>
       </div>
 
