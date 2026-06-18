@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { DatePicker, Select, Button, InputNumber, message } from 'antd'
+import { DatePicker, Select, Button, InputNumber, Switch, message } from 'antd'
 import { PlayCircleOutlined, LineChartOutlined, ThunderboltOutlined, TrophyOutlined, BarChartOutlined } from '@ant-design/icons'
 import { dataAPI, vipAPI } from '../api'
 import dayjs from 'dayjs'
@@ -18,6 +18,7 @@ function SetupPage({ user }) {
   const [selectedStock, setSelectedStock] = useState(null)
   const [stockOptions, setStockOptions] = useState([])
   const [initialCapital, setInitialCapital] = useState(1000000)
+  const [loadMarket, setLoadMarket] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const handleSearch = async (value) => {
@@ -71,6 +72,7 @@ function SetupPage({ user }) {
         startDate: dateStr,
         tradingDays: res.data,
         initialCapital: initialCapital,
+        loadMarket: loadMarket,
       }))
       navigate('/trading')
     } catch (err) {
@@ -111,6 +113,15 @@ function SetupPage({ user }) {
               options={stockOptions}
               filterOption={false}
               notFoundContent="输入代码搜索"
+            />
+          </div>
+          <div className="form-inline-item">
+            <span className="form-inline-label">市场全貌</span>
+            <Switch
+              checked={loadMarket}
+              onChange={setLoadMarket}
+              checkedChildren="开"
+              unCheckedChildren="关"
             />
           </div>
           <div className="form-inline-item">

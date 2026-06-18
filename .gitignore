@@ -6,8 +6,8 @@ venv/
 .env
 
 # Data files (too large for git)
-data/*.parquet
-data/app.db
+data/
+backend/data/
 
 # Frontend build & deps
 frontend/node_modules/

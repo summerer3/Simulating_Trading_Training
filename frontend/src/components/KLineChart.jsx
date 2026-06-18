@@ -7,7 +7,7 @@ import { dataAPI } from '../api'
  * 可交互K线图组件（基于TradingView lightweight-charts）
  * 支持拖动、缩放
  */
-function KLineChart({ stockCode, endDate, days = 0, height = 400 }) {
+function KLineChart({ stockCode, endDate, days = 0, height = 400, preloadedData = null }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const chartContainerRef = useRef(null)
@@ -16,12 +16,21 @@ function KLineChart({ stockCode, endDate, days = 0, height = 400 }) {
 
   useEffect(() => {
     if (!stockCode || !endDate) return
+    if (preloadedData) {
+      // 用预加载数据，按 endDate 过滤只显示当前日期及之前的数据
+      const filtered = preloadedData.filter(d => {
+        const dStr = typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)
+        return dStr <= endDate
+      })
+      setData(filtered)
+      return
+    }
     setLoading(true)
     dataAPI.getStockHistory(stockCode, endDate, days)
       .then(res => setData(res.data))
       .catch(() => setData([]))
       .finally(() => setLoading(false))
-  }, [stockCode, endDate, days])
+  }, [stockCode, endDate, days, preloadedData])
 
   useEffect(() => {
     if (!chartContainerRef.current) return

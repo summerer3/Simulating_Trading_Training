@@ -1,21 +1,43 @@
 """
 数据服务：提供股票数据查询功能
+优化版：使用按股票和按月拆分的数据文件，大幅降低内存占用
 """
 import pandas as pd
 from pathlib import Path
 from functools import lru_cache
 from typing import Optional
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+STOCKS_DIR = DATA_DIR / "stocks"
+MARKET_DIR = DATA_DIR / "market"
 
 
-@lru_cache(maxsize=25)
-def load_year_data(year: int) -> Optional[pd.DataFrame]:
-    """加载某年的数据（带缓存）"""
-    file_path = DATA_DIR / f"{year}.parquet"
+@lru_cache(maxsize=50)
+def _load_stock_data(stock_code: str) -> Optional[pd.DataFrame]:
+    """加载单只股票的全部历史数据（~100-500KB per stock）"""
+    file_path = STOCKS_DIR / f"{stock_code}.parquet"
     if not file_path.exists():
         return None
     return pd.read_parquet(file_path)
+
+
+@lru_cache(maxsize=3)
+def _load_market_month(year_month: str) -> Optional[pd.DataFrame]:
+    """加载某月的市场数据（~1-2MB per month）"""
+    file_path = MARKET_DIR / f"{year_month}.parquet"
+    if not file_path.exists():
+        return None
+    return pd.read_parquet(file_path)
+
+
+@lru_cache(maxsize=1)
+def _load_trading_days() -> list:
+    """加载交易日列表（~50KB）"""
+    file_path = DATA_DIR / "trading_days.parquet"
+    if not file_path.exists():
+        return []
+    df = pd.read_parquet(file_path)
+    return sorted(df['date'].tolist())
 
 
 def get_stock_list() -> list:
@@ -30,17 +52,20 @@ def get_stock_list() -> list:
 def get_market_data(date_str: str) -> list:
     """获取某日的市场全貌数据（前一交易日的收盘数据）"""
     date = pd.Timestamp(date_str)
-    year = date.year
 
-    df = load_year_data(year)
-    if df is None:
-        return []
+    # 确定要加载的月份文件
+    ym = date.strftime('%Y-%m')
+    df = _load_market_month(ym)
 
-    # 获取该日期之前最近的交易日数据
-    df_before = df[df['date'] < date]
+    if df is not None:
+        df_before = df[df['date'] < date]
+    else:
+        df_before = pd.DataFrame()
+
+    # 如果当月没有更早的数据，尝试上个月
     if df_before.empty:
-        # 尝试前一年
-        df_prev = load_year_data(year - 1)
+        prev_month = (date - pd.DateOffset(months=1)).strftime('%Y-%m')
+        df_prev = _load_market_month(prev_month)
         if df_prev is not None:
             df_before = df_prev
 
@@ -59,71 +84,42 @@ def get_market_data(date_str: str) -> list:
         'circulating_market_cap': 'market_cap'
     })
 
-    # 处理NaN/Infinity值，避免JSON序列化失败
-    result = result.fillna(0)
-    result = result.replace([float('inf'), float('-inf')], 0)
-
     return result.to_dict('records')
 
 
 def get_stock_history(stock_code: str, end_date: str, days: int = 0) -> list:
     """获取某只股票截止到某日之前最近两年的历史数据"""
-    end = pd.Timestamp(end_date)
-    two_years_ago = end - pd.DateOffset(years=2)
-    year = end.year
-
-    all_data = []
-    # 加载涉及的年份数据（最多3个年份文件覆盖两年范围）
-    for y in range(two_years_ago.year, year + 1):
-        df = load_year_data(y)
-        if df is not None:
-            stock_df = df[df['stock_code'] == stock_code]
-            if not stock_df.empty:
-                all_data.append(stock_df)
-
-    if not all_data:
+    df = _load_stock_data(stock_code)
+    if df is None:
         return []
 
-    combined = pd.concat(all_data, ignore_index=True)
-    combined = combined[(combined['date'] >= two_years_ago) & (combined['date'] < end)]
-    combined = combined.sort_values('date')
+    end = pd.Timestamp(end_date)
+    two_years_ago = end - pd.DateOffset(years=2)
+
+    filtered = df[(df['date'] >= two_years_ago) & (df['date'] < end)]
 
     if days > 0:
-        combined = combined.tail(days)
+        filtered = filtered.tail(days)
 
-    result = combined[['date', 'open', 'high', 'low', 'close', 'pre_close',
-                       'circulating_market_cap', 'change_pct']].copy()
-    numeric_cols = ['open', 'high', 'low', 'close', 'pre_close', 'circulating_market_cap', 'change_pct']
-    result[numeric_cols] = result[numeric_cols].fillna(0).replace([float('inf'), float('-inf')], 0)
-    return result.to_dict('records')
+    return filtered[['date', 'open', 'high', 'low', 'close', 'pre_close', 'change_pct']].to_dict('records')
 
 
 def get_trading_days(start_date: str, stock_code: str = "000001.XSHE") -> list:
     """获取从某日开始的交易日列表"""
     start = pd.Timestamp(start_date)
-    year = start.year
-
-    all_dates = set()
-    for y in range(year, min(year + 2, 2027)):
-        df = load_year_data(y)
-        if df is not None:
-            dates = df[df['date'] >= start]['date'].unique()
-            all_dates.update(dates)
-
-    return sorted([d.strftime('%Y-%m-%d') if hasattr(d, 'strftime') else str(d)[:10]
-                   for d in all_dates])
+    all_days = _load_trading_days()
+    return [d.strftime('%Y-%m-%d') if hasattr(d, 'strftime') else str(d)[:10]
+            for d in all_days if d >= start]
 
 
 def get_stock_day_price(stock_code: str, date_str: str) -> Optional[dict]:
     """获取某只股票某天的价格数据"""
-    date = pd.Timestamp(date_str)
-    year = date.year
-
-    df = load_year_data(year)
+    df = _load_stock_data(stock_code)
     if df is None:
         return None
 
-    row = df[(df['stock_code'] == stock_code) & (df['date'] == date)]
+    date = pd.Timestamp(date_str)
+    row = df[df['date'] == date]
     if row.empty:
         return None
 

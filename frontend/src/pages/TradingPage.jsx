@@ -20,6 +20,8 @@ function TradingPage({ user }) {
   const [selectedStock, setSelectedStock] = useState(null)
   const [positionRatio, setPositionRatio] = useState(1.0)
   const [actionMsg, setActionMsg] = useState(null)
+  const [preloadedStockData, setPreloadedStockData] = useState(null)
+  const [currentPrice, setCurrentPrice] = useState(null)
   const tradingRef = useRef(false)
 
   // 用ref保持最新状态给键盘事件用
@@ -35,13 +37,41 @@ function TradingPage({ user }) {
     setConfig(cfg)
     setCash(cfg.initialCapital)
     setCapitalHistory([{ date: cfg.startDate, capital: cfg.initialCapital }])
+    // 预加载目标股票未来一年的数据
+    const preloadEnd = new Date(cfg.startDate)
+    preloadEnd.setFullYear(preloadEnd.getFullYear() + 1)
+    const preloadEndStr = preloadEnd.toISOString().slice(0, 10)
+    dataAPI.getStockHistory(cfg.stockCode, preloadEndStr, 0)
+      .then(res => setPreloadedStockData(res.data))
+      .catch(() => setPreloadedStockData(null))
   }, [])
 
   useEffect(() => {
     if (config && config.tradingDays[currentDayIndex]) {
       loadMarketData()
+      updateCurrentPrice()
     }
-  }, [config, currentDayIndex])
+  }, [config, currentDayIndex, preloadedStockData])
+
+  const updateCurrentPrice = () => {
+    if (!config) return
+    const curDate = config.tradingDays[currentDayIndex]
+    // 优先从预加载数据获取当日收盘价
+    if (preloadedStockData && preloadedStockData.length > 0) {
+      const dayData = preloadedStockData.find(d => {
+        const dStr = typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)
+        return dStr === curDate
+      })
+      if (dayData) {
+        setCurrentPrice(dayData.close)
+        return
+      }
+    }
+    // 回退：从API获取
+    dataAPI.getStockPrice(config.stockCode, curDate)
+      .then(res => setCurrentPrice(res.data.close))
+      .catch(() => {})
+  }
 
   // 快捷键
   useEffect(() => {
@@ -63,6 +93,10 @@ function TradingPage({ user }) {
 
   const loadMarketData = async () => {
     if (!config) return
+    if (!config.loadMarket) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       const res = await dataAPI.getMarket(config.tradingDays[currentDayIndex])
@@ -176,8 +210,7 @@ function TradingPage({ user }) {
     const initial = config.initialCapital
     let finalCapital = cash
     if (position) {
-      const lastItem = marketData.find(m => m.stock_code === config.stockCode)
-      finalCapital += position.shares * (lastItem?.current_price || position.avg_cost)
+      finalCapital += position.shares * (currentPrice || position.avg_cost)
     }
     const totalReturn = ((finalCapital - initial) / initial) * 100
     const startDate = config.tradingDays[0]
@@ -254,8 +287,11 @@ function TradingPage({ user }) {
   }
 
   const displayStock = selectedStock || config.stockCode
-  const totalAsset = cash + (position ? position.shares * (marketData.find(m => m.stock_code === position?.stock_code)?.current_price || position.avg_cost) : 0)
+  const positionPrice = currentPrice || position?.avg_cost || 0
+  const positionMarketValue = position ? position.shares * positionPrice : 0
+  const totalAsset = cash + positionMarketValue
   const profitPct = ((totalAsset - config.initialCapital) / config.initialCapital * 100)
+  const positionPnlPct = position ? ((positionPrice - position.avg_cost) / position.avg_cost * 100) : 0
 
   return (
     <div className="trading-page">
@@ -267,10 +303,20 @@ function TradingPage({ user }) {
           <Tag color="blue">{config.stockCode.split('.')[0]}</Tag>
         </div>
         <div className="topbar-center">
-          <span className="topbar-stat">💰 ¥{cash.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-          {position && <span className="topbar-stat">📦 {position.shares}股@{position.avg_cost.toFixed(2)}</span>}
+          <span className="topbar-stat">💰 总资产 ¥{totalAsset.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          <span className="topbar-stat">💵 现金 ¥{cash.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          {position && (
+            <>
+              <span className="topbar-stat">📦 市值 ¥{positionMarketValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <span className="topbar-stat">成本 {position.avg_cost.toFixed(2)}</span>
+              <span className="topbar-stat">现价 {positionPrice.toFixed(2)}</span>
+              <span className={`topbar-stat ${positionPnlPct >= 0 ? 'profit-up' : 'profit-down'}`}>
+                {positionPnlPct >= 0 ? '+' : ''}{positionPnlPct.toFixed(2)}%
+              </span>
+            </>
+          )}
           <span className={`topbar-stat ${profitPct >= 0 ? 'profit-up' : 'profit-down'}`}>
-            {profitPct >= 0 ? '📈' : '📉'} {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
+            {profitPct >= 0 ? '📈' : '📉'} 总收益 {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
           </span>
         </div>
         <div className="topbar-right">
@@ -299,7 +345,8 @@ function TradingPage({ user }) {
       </div>
 
       {/* 主体布局：左列表 右K线 */}
-      <div className="trading-main">
+      <div className="trading-main" style={config.loadMarket ? {} : { gridTemplateColumns: '1fr' }}>
+        {config.loadMarket && (
         <div className="trading-left">
           <Table
             dataSource={marketData}
@@ -313,6 +360,7 @@ function TradingPage({ user }) {
             onRow={(record) => ({ onClick: () => setSelectedStock(record.stock_code) })}
           />
         </div>
+        )}
 
         <div className="trading-right">
           <Card size="small"
@@ -322,7 +370,13 @@ function TradingPage({ user }) {
             )}
             bodyStyle={{ padding: '8px 0 0 0' }}
           >
-            <KLineChart stockCode={displayStock} endDate={currentDate} days={0} height={Math.max(400, window.innerHeight - 300)} />
+            <KLineChart
+              stockCode={displayStock}
+              endDate={currentDate}
+              days={0}
+              height={Math.max(400, window.innerHeight - 300)}
+              preloadedData={displayStock === config.stockCode ? preloadedStockData : null}
+            />
           </Card>
 
           {tradeHistory.length > 0 && (
