@@ -303,21 +303,13 @@ function TradingPage({ user }) {
           <Tag color="blue">{config.stockCode.split('.')[0]}</Tag>
         </div>
         <div className="topbar-center">
-          <span className="topbar-stat">💰 总资产 ¥{totalAsset.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-          <span className="topbar-stat">💵 现金 ¥{cash.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-          {position && (
-            <>
-              <span className="topbar-stat">📦 市值 ¥{positionMarketValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-              <span className="topbar-stat">成本 {position.avg_cost.toFixed(2)}</span>
-              <span className="topbar-stat">现价 {positionPrice.toFixed(2)}</span>
-              <span className={`topbar-stat ${positionPnlPct >= 0 ? 'profit-up' : 'profit-down'}`}>
-                {positionPnlPct >= 0 ? '+' : ''}{positionPnlPct.toFixed(2)}%
-              </span>
-            </>
+          {actionMsg && (
+            <div className={`action-feedback ${actionMsg.type}`}>
+              {actionMsg.type === 'buy' && '🔴 '}{actionMsg.type === 'sell' && '🟢 '}
+              {actionMsg.type === 'hold' && '⏸️ '}{actionMsg.type === 'warning' && '⚠️ '}
+              {actionMsg.text}
+            </div>
           )}
-          <span className={`topbar-stat ${profitPct >= 0 ? 'profit-up' : 'profit-down'}`}>
-            {profitPct >= 0 ? '📈' : '📉'} 总收益 {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
-          </span>
         </div>
         <div className="topbar-right">
           <Radio.Group size="small" value={positionRatio} onChange={e => setPositionRatio(e.target.value)}>
@@ -328,24 +320,8 @@ function TradingPage({ user }) {
         </div>
       </div>
 
-      {/* 快捷键提示 + 操作反馈 */}
-      <div className="action-bar">
-        <div className="hotkey-bar">
-          <span className="hotkey-item"><kbd>Q</kbd> 买入</span>
-          <span className="hotkey-item"><kbd>W</kbd> 卖出</span>
-          <span className="hotkey-item"><kbd>E</kbd> 观望/下一天</span>
-        </div>
-        {actionMsg && (
-          <div className={`action-feedback ${actionMsg.type}`}>
-            {actionMsg.type === 'buy' && '🔴 '}{actionMsg.type === 'sell' && '🟢 '}
-            {actionMsg.type === 'hold' && '⏸️ '}{actionMsg.type === 'warning' && '⚠️ '}
-            {actionMsg.text}
-          </div>
-        )}
-      </div>
-
-      {/* 主体布局：左列表 右K线 */}
-      <div className="trading-main" style={config.loadMarket ? {} : { gridTemplateColumns: '1fr' }}>
+      {/* 主体布局：左K线 右信息面板 */}
+      <div className="trading-main" style={{ gridTemplateColumns: config.loadMarket ? '280px 1fr 280px' : '1fr 280px' }}>
         {config.loadMarket && (
         <div className="trading-left">
           <Table
@@ -355,14 +331,14 @@ function TradingPage({ user }) {
             size="small"
             loading={loading}
             pagination={{ pageSize: 25, showSizeChanger: false, size: 'small' }}
-            scroll={{ y: 'calc(100vh - 260px)' }}
+            scroll={{ y: 'calc(100vh - 160px)' }}
             rowClassName={(record) => record.stock_code === config.stockCode ? 'ant-table-row-selected' : ''}
             onRow={(record) => ({ onClick: () => setSelectedStock(record.stock_code) })}
           />
         </div>
         )}
 
-        <div className="trading-right">
+        <div className="trading-chart">
           <Card size="small"
             title={`${displayStock.split('.')[0]} K线`}
             extra={selectedStock && selectedStock !== config.stockCode && (
@@ -374,22 +350,89 @@ function TradingPage({ user }) {
               stockCode={displayStock}
               endDate={currentDate}
               days={0}
-              height={Math.max(400, window.innerHeight - 300)}
+              height={Math.max(400, window.innerHeight - 240)}
               preloadedData={displayStock === config.stockCode ? preloadedStockData : null}
             />
           </Card>
+        </div>
+
+        {/* 右侧信息面板 */}
+        <div className="trading-panel">
+          <div className="panel-section">
+            <div className="panel-title">账户概览</div>
+            <div className="panel-row">
+              <span className="panel-label">总资产</span>
+              <span className="panel-value">¥{totalAsset.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </div>
+            <div className="panel-row">
+              <span className="panel-label">可用现金</span>
+              <span className="panel-value">¥{cash.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </div>
+            <div className="panel-row">
+              <span className="panel-label">总收益</span>
+              <span className={`panel-value ${profitPct >= 0 ? 'profit-up' : 'profit-down'}`}>
+                {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
+              </span>
+            </div>
+          </div>
+
+          {position && (
+            <div className="panel-section">
+              <div className="panel-title">持仓信息</div>
+              <div className="panel-row">
+                <span className="panel-label">持仓市值</span>
+                <span className="panel-value">¥{positionMarketValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              </div>
+              <div className="panel-row">
+                <span className="panel-label">持仓数量</span>
+                <span className="panel-value">{position.shares}股</span>
+              </div>
+              <div className="panel-row">
+                <span className="panel-label">买入均价</span>
+                <span className="panel-value">{position.avg_cost.toFixed(2)}</span>
+              </div>
+              <div className="panel-row">
+                <span className="panel-label">现价</span>
+                <span className="panel-value">{positionPrice.toFixed(2)}</span>
+              </div>
+              <div className="panel-row">
+                <span className="panel-label">持仓涨跌</span>
+                <span className={`panel-value ${positionPnlPct >= 0 ? 'profit-up' : 'profit-down'}`}>
+                  {positionPnlPct >= 0 ? '+' : ''}{positionPnlPct.toFixed(2)}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="panel-section">
+            <div className="panel-title">交易操作</div>
+            <div className="panel-actions">
+              <Button block className="btn-buy" onClick={() => executeAction('buy')}>
+                买入 <kbd>Q</kbd>
+              </Button>
+              <Button block className="btn-sell" onClick={() => executeAction('sell')}>
+                卖出 <kbd>W</kbd>
+              </Button>
+              <Button block className="btn-hold" onClick={() => executeAction('hold')}>
+                观望 <kbd>E</kbd>
+              </Button>
+            </div>
+          </div>
 
           {tradeHistory.length > 0 && (
-            <div className="trade-log">
-              {tradeHistory.slice(-5).reverse().map((t, i) => (
-                <span key={i} className="trade-log-item">
-                  <Tag color={t.action === 'buy' ? 'red' : 'green'} style={{ fontSize: 11, marginRight: 4 }}>
-                    {t.action === 'buy' ? '买' : '卖'}
-                  </Tag>
-                  {t.date.slice(5)} {t.shares}@{t.price.toFixed(2)}
-                  {t.profit !== undefined && <span style={{ color: t.profit >= 0 ? '#cf1322' : '#3f8600' }}> {t.profit >= 0 ? '+' : ''}{t.profit.toFixed(0)}</span>}
-                </span>
-              ))}
+            <div className="panel-section">
+              <div className="panel-title">交易记录</div>
+              <div className="panel-trades">
+                {tradeHistory.slice(-6).reverse().map((t, i) => (
+                  <div key={i} className="panel-trade-item">
+                    <Tag color={t.action === 'buy' ? 'red' : 'green'} style={{ fontSize: 11 }}>
+                      {t.action === 'buy' ? '买' : '卖'}
+                    </Tag>
+                    <span>{t.date.slice(5)} {t.shares}@{t.price.toFixed(2)}</span>
+                    {t.profit !== undefined && <span style={{ color: t.profit >= 0 ? '#cf1322' : '#3f8600', marginLeft: 4 }}>{t.profit >= 0 ? '+' : ''}{t.profit.toFixed(0)}</span>}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

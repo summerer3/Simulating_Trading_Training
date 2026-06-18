@@ -452,7 +452,7 @@ body {
 
 .trading-main {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: 1fr 280px;
   height: calc(100vh - 110px);
   overflow: hidden;
 }
@@ -469,6 +469,18 @@ body {
   background: transparent;
 }
 
+.trading-chart {
+  padding: 8px 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-dark);
+}
+
+.trading-chart > .ant-card {
+  flex: 1;
+}
+
 .trading-right {
   padding: 8px 12px;
   overflow-y: auto;
@@ -481,19 +493,111 @@ body {
   flex: 1;
 }
 
-.trade-log {
+/* 右侧信息面板 */
+.trading-panel {
+  border-left: 1px solid var(--border);
+  background: var(--bg-surface);
+  overflow-y: auto;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 0;
-  font-size: 12px;
+  flex-direction: column;
 }
 
-.trade-log-item {
-  background: var(--bg-surface);
-  padding: 2px 8px;
-  border-radius: 4px;
+.panel-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+
+.panel-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.panel-label {
   color: var(--text-secondary);
+}
+
+.panel-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-actions kbd {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.1);
+  margin-left: 6px;
+  font-family: inherit;
+}
+
+.btn-buy {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #fff !important;
+  font-weight: 600;
+  height: 36px;
+}
+.btn-buy:hover {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+}
+
+.btn-sell {
+  background: #16a34a !important;
+  border-color: #16a34a !important;
+  color: #fff !important;
+  font-weight: 600;
+  height: 36px;
+}
+.btn-sell:hover {
+  background: #22c55e !important;
+  border-color: #22c55e !important;
+}
+
+.btn-hold {
+  background: var(--bg-dark) !important;
+  border-color: var(--border) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 600;
+  height: 36px;
+}
+.btn-hold:hover {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}
+
+.panel-trades {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panel-trade-item {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ========== 总结页面 ========== */
@@ -546,7 +650,11 @@ body {
     align-items: flex-start;
   }
   .trading-main {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
     height: auto;
+  }
+  .trading-panel {
+    border-left: none;
+    border-top: 1px solid var(--border);
   }
 }
