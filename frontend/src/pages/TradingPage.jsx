@@ -23,6 +23,7 @@ function TradingPage({ user }) {
   const [preloadedStockData, setPreloadedStockData] = useState(null)
   const [currentPrice, setCurrentPrice] = useState(null)
   const tradingRef = useRef(false)
+  const preloadEndRef = useRef(null)
 
   // 用ref保持最新状态给键盘事件用
   const stateRef = useRef({ config, currentDayIndex, cash, position, positionRatio, loading, showSummary, tradeHistory, capitalHistory, marketData })
@@ -44,6 +45,7 @@ function TradingPage({ user }) {
     dataAPI.getStockHistory(cfg.stockCode, preloadEndStr, 0)
       .then(res => setPreloadedStockData(res.data))
       .catch(() => setPreloadedStockData(null))
+    preloadEndRef.current = preloadEndStr
   }, [])
 
   useEffect(() => {
@@ -65,6 +67,16 @@ function TradingPage({ user }) {
       if (dayData) {
         setCurrentPrice(dayData.close)
         return
+      }
+      // 超出预加载范围，追加加载下一年数据
+      if (preloadEndRef.current && curDate > preloadEndRef.current) {
+        const nextEnd = new Date(preloadEndRef.current)
+        nextEnd.setFullYear(nextEnd.getFullYear() + 1)
+        const nextEndStr = nextEnd.toISOString().slice(0, 10)
+        preloadEndRef.current = nextEndStr // 防止重复请求
+        dataAPI.getStockHistory(config.stockCode, nextEndStr, 0)
+          .then(res => setPreloadedStockData(res.data))
+          .catch(() => {})
       }
     }
     // 回退：从API获取
@@ -376,33 +388,31 @@ function TradingPage({ user }) {
             </div>
           </div>
 
-          {position && (
-            <div className="panel-section">
-              <div className="panel-title">持仓信息</div>
-              <div className="panel-row">
-                <span className="panel-label">持仓市值</span>
-                <span className="panel-value">¥{positionMarketValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-              </div>
-              <div className="panel-row">
-                <span className="panel-label">持仓数量</span>
-                <span className="panel-value">{position.shares}股</span>
-              </div>
-              <div className="panel-row">
-                <span className="panel-label">买入均价</span>
-                <span className="panel-value">{position.avg_cost.toFixed(2)}</span>
-              </div>
-              <div className="panel-row">
-                <span className="panel-label">现价</span>
-                <span className="panel-value">{positionPrice.toFixed(2)}</span>
-              </div>
-              <div className="panel-row">
-                <span className="panel-label">持仓涨跌</span>
-                <span className={`panel-value ${positionPnlPct >= 0 ? 'profit-up' : 'profit-down'}`}>
-                  {positionPnlPct >= 0 ? '+' : ''}{positionPnlPct.toFixed(2)}%
-                </span>
-              </div>
+          <div className="panel-section">
+            <div className="panel-title">持仓信息</div>
+            <div className="panel-row">
+              <span className="panel-label">持仓市值</span>
+              <span className="panel-value">¥{positionMarketValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
             </div>
-          )}
+            <div className="panel-row">
+              <span className="panel-label">持仓数量</span>
+              <span className="panel-value">{position ? position.shares : 0}股</span>
+            </div>
+            <div className="panel-row">
+              <span className="panel-label">买入均价</span>
+              <span className="panel-value">{position ? position.avg_cost.toFixed(2) : '0.00'}</span>
+            </div>
+            <div className="panel-row">
+              <span className="panel-label">现价</span>
+              <span className="panel-value">{currentPrice ? currentPrice.toFixed(2) : '-'}</span>
+            </div>
+            <div className="panel-row">
+              <span className="panel-label">持仓涨跌</span>
+              <span className={`panel-value ${positionPnlPct >= 0 ? 'profit-up' : 'profit-down'}`}>
+                {position ? (positionPnlPct >= 0 ? '+' : '') + positionPnlPct.toFixed(2) + '%' : '0.00%'}
+              </span>
+            </div>
+          </div>
 
           <div className="panel-section">
             <div className="panel-title">交易操作</div>

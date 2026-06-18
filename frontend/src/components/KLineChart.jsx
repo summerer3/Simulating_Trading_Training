@@ -22,9 +22,12 @@ function KLineChart({ stockCode, endDate, days = 0, height = 400, preloadedData 
         const dStr = typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)
         return dStr <= endDate
       })
-      setData(filtered)
-      return
+      if (filtered.length > 0) {
+        setData(filtered)
+        return
+      }
     }
+    // 预加载数据为空或不覆盖当前日期，回退到API
     setLoading(true)
     dataAPI.getStockHistory(stockCode, endDate, days)
       .then(res => setData(res.data))
