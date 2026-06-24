@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, Table, Button, Tag, Radio, message, Spin, Typography, Popconfirm } from 'antd'
 import { dataAPI, sessionAPI } from '../api'
 import KLineChart from '../components/KLineChart'
 
 const { Title } = Typography
+const emptyMarkers = []
 
 function TradingPage({ user }) {
   const navigate = useNavigate()
@@ -58,14 +59,16 @@ function TradingPage({ user }) {
   const updateCurrentPrice = () => {
     if (!config) return
     const curDate = config.tradingDays[currentDayIndex]
-    // 优先从预加载数据获取当日收盘价
+    // 模拟开盘前：显示前一日收盘价作为当前价格
     if (preloadedStockData && preloadedStockData.length > 0) {
-      const dayData = preloadedStockData.find(d => {
-        const dStr = typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)
-        return dStr === curDate
-      })
-      if (dayData) {
-        setCurrentPrice(dayData.close)
+      const prevDayData = preloadedStockData
+        .filter(d => {
+          const dStr = typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)
+          return dStr < curDate
+        })
+        .pop()
+      if (prevDayData) {
+        setCurrentPrice(prevDayData.close)
         return
       }
       // 超出预加载范围，追加加载下一年数据
@@ -366,6 +369,7 @@ function TradingPage({ user }) {
               days={0}
               height={Math.max(400, window.innerHeight - 240)}
               preloadedData={displayStock === config.stockCode ? preloadedStockData : null}
+              markers={displayStock === config.stockCode ? tradeHistory : emptyMarkers}
             />
           </Card>
         </div>

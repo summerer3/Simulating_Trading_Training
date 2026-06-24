@@ -1,40 +1,44 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Spin, Empty } from 'antd'
-import { createChart, CandlestickSeries } from 'lightweight-charts'
+import { createChart, CandlestickSeries, createSeriesMarkers } from 'lightweight-charts'
 import { dataAPI } from '../api'
 
 /**
  * 可交互K线图组件（基于TradingView lightweight-charts）
  * 支持拖动、缩放
  */
-function KLineChart({ stockCode, endDate, days = 0, height = 400, preloadedData = null }) {
-  const [data, setData] = useState([])
+function KLineChart({ stockCode, endDate, days = 0, height = 400, preloadedData = null, markers = [] }) {
+  const [apiData, setApiData] = useState(null)
   const [loading, setLoading] = useState(false)
   const chartContainerRef = useRef(null)
   const chartRef = useRef(null)
-  const seriesRef = useRef(null)
 
+  // 当没有预加载数据时，从API获取
   useEffect(() => {
     if (!stockCode || !endDate) return
-    if (preloadedData) {
-      // 用预加载数据，按 endDate 过滤只显示当前日期及之前的数据
-      const filtered = preloadedData.filter(d => {
-        const dStr = typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)
-        return dStr <= endDate
-      })
-      if (filtered.length > 0) {
-        setData(filtered)
-        return
-      }
+    if (preloadedData && preloadedData.length > 0) {
+      setApiData(null)
+      return
     }
-    // 预加载数据为空或不覆盖当前日期，回退到API
     setLoading(true)
     dataAPI.getStockHistory(stockCode, endDate, days)
-      .then(res => setData(res.data))
-      .catch(() => setData([]))
+      .then(res => setApiData(res.data))
+      .catch(() => setApiData([]))
       .finally(() => setLoading(false))
   }, [stockCode, endDate, days, preloadedData])
 
+  // 计算实际使用的数据：优先从预加载数据过滤，否则用API数据
+  const chartSourceData = React.useMemo(() => {
+    if (preloadedData && preloadedData.length > 0) {
+      return preloadedData.filter(d => {
+        const dStr = typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)
+        return dStr < endDate
+      })
+    }
+    return apiData || []
+  }, [preloadedData, endDate, apiData])
+
+  // 渲染图表（数据和标记同步处理）
   useEffect(() => {
     if (!chartContainerRef.current) return
 
@@ -44,7 +48,7 @@ function KLineChart({ stockCode, endDate, days = 0, height = 400, preloadedData 
       chartRef.current = null
     }
 
-    if (!data || data.length === 0) return
+    if (!chartSourceData || chartSourceData.length === 0) return
 
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
@@ -78,7 +82,7 @@ function KLineChart({ stockCode, endDate, days = 0, height = 400, preloadedData 
       wickDownColor: '#26a69a',
     })
 
-    const chartData = data
+    const chartData = chartSourceData
       .filter(d => d.open && d.high && d.low && d.close)
       .map(d => ({
         time: typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10),
@@ -89,6 +93,24 @@ function KLineChart({ stockCode, endDate, days = 0, height = 400, preloadedData 
       }))
 
     candlestickSeries.setData(chartData)
+
+    // 添加买卖点标注（只画K线已有日期的标记，当天交易在下一交易日可见）
+    if (markers && markers.length > 0) {
+      const timeSet = new Set(chartData.map(d => d.time))
+      const chartMarkers = markers
+        .filter(m => m.date && (m.action === 'buy' || m.action === 'sell') && timeSet.has(m.date))
+        .map(m => ({
+          time: m.date,
+          position: m.action === 'buy' ? 'belowBar' : 'aboveBar',
+          color: m.action === 'buy' ? '#ef5350' : '#26a69a',
+          shape: m.action === 'buy' ? 'arrowUp' : 'arrowDown',
+          text: m.action === 'buy' ? `B ${m.price.toFixed(2)}` : `S ${m.price.toFixed(2)}`,
+        }))
+        .sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0)
+      if (chartMarkers.length > 0) {
+        createSeriesMarkers(candlestickSeries, chartMarkers)
+      }
+    }
 
     // 默认显示最近半年的数据，用户可拖动查看更早的
     if (chartData.length > 0) {
@@ -102,7 +124,6 @@ function KLineChart({ stockCode, endDate, days = 0, height = 400, preloadedData 
     }
 
     chartRef.current = chart
-    seriesRef.current = candlestickSeries
 
     // 响应式
     const handleResize = () => {
@@ -119,10 +140,10 @@ function KLineChart({ stockCode, endDate, days = 0, height = 400, preloadedData 
         chartRef.current = null
       }
     }
-  }, [data, height])
+  }, [chartSourceData, height, markers])
 
   if (loading) return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin /></div>
-  if (!data || data.length === 0) return <Empty description="暂无K线数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+  if (!chartSourceData || chartSourceData.length === 0) return <Empty description="暂无K线数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
 
   return <div ref={chartContainerRef} style={{ width: '100%' }} />
 }
