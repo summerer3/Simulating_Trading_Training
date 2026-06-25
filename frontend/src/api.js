@@ -34,6 +34,7 @@ export const dataAPI = {
     api.get('/stock/price', { params: { stock_code: stockCode, date } }),
   getTradingDays: (startDate) =>
     api.get('/trading-days', { params: { start_date: startDate } }),
+  randomStart: () => api.get('/random-start'),
 }
 
 // 训练记录相关

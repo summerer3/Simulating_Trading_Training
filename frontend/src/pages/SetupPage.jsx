@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DatePicker, Select, Button, InputNumber, Switch, message } from 'antd'
-import { PlayCircleOutlined, LineChartOutlined, ThunderboltOutlined, TrophyOutlined, BarChartOutlined } from '@ant-design/icons'
+import { PlayCircleOutlined, LineChartOutlined, ThunderboltOutlined, TrophyOutlined, BarChartOutlined, ThunderboltFilled } from '@ant-design/icons'
 import { dataAPI, vipAPI } from '../api'
 import dayjs from 'dayjs'
 
@@ -20,6 +20,7 @@ function SetupPage({ user }) {
   const [initialCapital, setInitialCapital] = useState(1000000)
   const [loadMarket, setLoadMarket] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [randomLoading, setRandomLoading] = useState(false)
 
   const handleSearch = async (value) => {
     if (!value || value.length < 2) {
@@ -34,6 +35,31 @@ function SetupPage({ user }) {
       })))
     } catch (err) {
       console.error(err)
+    }
+  }
+
+  const handleRandomStart = async () => {
+    setRandomLoading(true)
+    try {
+      const randomRes = await dataAPI.randomStart()
+      const { stock_code, start_date } = randomRes.data
+      const res = await dataAPI.getTradingDays(start_date)
+      if (res.data.length === 0) {
+        message.error('随机日期之后没有交易日数据，请重试')
+        return
+      }
+      sessionStorage.setItem('tradingConfig', JSON.stringify({
+        stockCode: stock_code,
+        startDate: start_date,
+        tradingDays: res.data,
+        initialCapital: initialCapital,
+        loadMarket: loadMarket,
+      }))
+      navigate('/trading')
+    } catch (err) {
+      message.error('随机选择失败，请重试')
+    } finally {
+      setRandomLoading(false)
     }
   }
 
@@ -145,6 +171,15 @@ function SetupPage({ user }) {
             className="start-btn"
           >
             开始训练
+          </Button>
+          <Button
+            icon={<ThunderboltFilled />}
+            onClick={handleRandomStart}
+            loading={randomLoading}
+            className="start-btn"
+            style={{ marginLeft: 8 }}
+          >
+            随机开始
           </Button>
         </div>
       </section>

@@ -138,6 +138,23 @@ def get_market(date: str):
     return data_service.get_market_data(date)
 
 
+@app.get("/api/random-start")
+def random_start():
+    """随机选择一只股票和开始日期"""
+    import random
+    stocks = data_service.get_stock_list()
+    if not stocks:
+        raise HTTPException(status_code=500, detail="无股票数据")
+    stock = random.choice(stocks)
+    trading_days = data_service.get_trading_days('2010-01-01')
+    if len(trading_days) < 250:
+        raise HTTPException(status_code=500, detail="交易日数据不足")
+    # 随机选一个日期，留出至少1年的交易空间
+    max_idx = len(trading_days) - 250
+    idx = random.randint(0, max_idx)
+    return {"stock_code": stock['stock_code'], "code_short": stock['code_short'], "start_date": trading_days[idx]}
+
+
 @app.get("/api/stock/history")
 def get_stock_history(stock_code: str, end_date: str, days: int = 0):
     """获取股票历史K线数据，days=0表示加载所有历史数据"""
