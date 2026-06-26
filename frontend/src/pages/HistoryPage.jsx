@@ -33,6 +33,11 @@ function HistoryPage({ user }) {
 
   const columns = [
     {
+      title: '股票代码',
+      dataIndex: 'stock_code',
+      render: (v) => v ? v.split('.')[0] : '-',
+    },
+    {
       title: '训练区间',
       key: 'period',
       render: (_, record) => `${record.start_date} ~ ${record.end_date}`,

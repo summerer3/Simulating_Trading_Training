@@ -21,6 +21,19 @@ import data_service
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
 
+
+def _ensure_training_sessions_columns():
+    """兼容旧SQLite库：补齐新字段"""
+    with engine.connect() as conn:
+        cols = conn.exec_driver_sql("PRAGMA table_info(training_sessions)").fetchall()
+        col_names = {c[1] for c in cols}
+        if "stock_code" not in col_names:
+            conn.exec_driver_sql("ALTER TABLE training_sessions ADD COLUMN stock_code VARCHAR")
+            conn.commit()
+
+
+_ensure_training_sessions_columns()
+
 app = FastAPI(title="A股模拟交易训练系统")
 
 app.add_middleware(
@@ -58,6 +71,7 @@ class TradeAction(BaseModel):
 
 
 class SaveSessionRequest(BaseModel):
+    stock_code: Optional[str] = None
     start_date: str
     end_date: str
     initial_capital: float
@@ -140,19 +154,29 @@ def get_market(date: str):
 
 @app.get("/api/random-start")
 def random_start():
-    """随机选择一只股票和开始日期"""
+    """随机选择一只股票和开始日期（上市满1年后）"""
     import random
+    import pandas as pd
     stocks = data_service.get_stock_list()
     if not stocks:
         raise HTTPException(status_code=500, detail="无股票数据")
-    stock = random.choice(stocks)
-    trading_days = data_service.get_trading_days('2010-01-01')
-    if len(trading_days) < 250:
-        raise HTTPException(status_code=500, detail="交易日数据不足")
-    # 随机选一个日期，留出至少1年的交易空间
-    max_idx = len(trading_days) - 250
-    idx = random.randint(0, max_idx)
-    return {"stock_code": stock['stock_code'], "code_short": stock['code_short'], "start_date": trading_days[idx]}
+    # 最多尝试10次找到有效股票
+    for _ in range(10):
+        stock = random.choice(stocks)
+        df = data_service._load_stock_data(stock['stock_code'])
+        if df is None or df.empty:
+            continue
+        first_date = df['date'].min()
+        # 上市满1年后的起始日期
+        earliest_start = (first_date + pd.DateOffset(years=1)).strftime('%Y-%m-%d')
+        trading_days = data_service.get_trading_days(earliest_start)
+        if len(trading_days) < 250:
+            continue
+        # 随机选一个日期，留出至少1年的交易空间
+        max_idx = len(trading_days) - 250
+        idx = random.randint(0, max_idx)
+        return {"stock_code": stock['stock_code'], "code_short": stock['code_short'], "start_date": trading_days[idx]}
+    raise HTTPException(status_code=500, detail="未找到符合条件的股票，请重试")
 
 
 @app.get("/api/stock/history")
@@ -187,6 +211,7 @@ def save_session(
     """保存训练结果"""
     session = TrainingSession(
         user_id=user.id,
+        stock_code=session_data.stock_code,
         start_date=session_data.start_date,
         end_date=session_data.end_date,
         initial_capital=session_data.initial_capital,
@@ -213,6 +238,7 @@ def get_sessions(user: User = Depends(get_current_user), db: Session = Depends(g
 
     return [{
         "id": s.id,
+        "stock_code": s.stock_code,
         "start_date": s.start_date,
         "end_date": s.end_date,
         "initial_capital": s.initial_capital,
@@ -373,6 +399,7 @@ def get_post_detail(post_id: int, db: Session = Depends(get_db)):
     if post.session:
         s = post.session
         result["session"] = {
+            "stock_code": s.stock_code,
             "start_date": s.start_date,
             "end_date": s.end_date,
             "initial_capital": s.initial_capital,

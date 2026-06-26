@@ -23,6 +23,7 @@ class TrainingSession(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    stock_code = Column(String, nullable=True)
     start_date = Column(String, nullable=False)
     end_date = Column(String, nullable=False)
     initial_capital = Column(Float, default=1000000.0)

@@ -61,25 +61,41 @@ function TradingPage({ user }) {
     const curDate = config.tradingDays[currentDayIndex]
     // 模拟开盘前：显示前一日收盘价作为当前价格
     if (preloadedStockData && preloadedStockData.length > 0) {
+      const latestLoadedDate = preloadedStockData
+        .map(d => (typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)))
+        .sort()
+        .pop()
+
+      // 超出预加载范围，追加加载下一年数据（合并新旧数据保留完整历史）
+      if (latestLoadedDate && curDate > latestLoadedDate && preloadEndRef.current) {
+        const nextEnd = new Date(preloadEndRef.current)
+        nextEnd.setFullYear(nextEnd.getFullYear() + 1)
+        const nextEndStr = nextEnd.toISOString().slice(0, 10)
+        preloadEndRef.current = nextEndStr // 防止重复请求
+        dataAPI.getStockHistory(config.stockCode, nextEndStr, 0)
+          .then(res => {
+            setPreloadedStockData(prev => {
+              if (!prev || prev.length === 0) return res.data
+              // 合并：以日期去重，保留完整历史
+              const dateKey = d => typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)
+              const existingDates = new Set(res.data.map(dateKey))
+              const oldUnique = prev.filter(d => !existingDates.has(dateKey(d)))
+              return [...oldUnique, ...res.data].sort((a, b) => dateKey(a).localeCompare(dateKey(b)))
+            })
+          })
+          .catch(() => {})
+      }
+
       const prevDayData = preloadedStockData
         .filter(d => {
           const dStr = typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10)
           return dStr < curDate
         })
         .pop()
-      if (prevDayData) {
+      // 仅在当前日期仍落在已加载范围内时，才使用预加载数据作为当前价
+      if (prevDayData && (!latestLoadedDate || curDate <= latestLoadedDate)) {
         setCurrentPrice(prevDayData.close)
         return
-      }
-      // 超出预加载范围，追加加载下一年数据
-      if (preloadEndRef.current && curDate > preloadEndRef.current) {
-        const nextEnd = new Date(preloadEndRef.current)
-        nextEnd.setFullYear(nextEnd.getFullYear() + 1)
-        const nextEndStr = nextEnd.toISOString().slice(0, 10)
-        preloadEndRef.current = nextEndStr // 防止重复请求
-        dataAPI.getStockHistory(config.stockCode, nextEndStr, 0)
-          .then(res => setPreloadedStockData(res.data))
-          .catch(() => {})
       }
     }
     // 回退：从API获取
@@ -240,7 +256,40 @@ function TradingPage({ user }) {
     }
     const sellTrades = tradeHistory.filter(t => t.action === 'sell')
     const winRate = sellTrades.length > 0 ? (sellTrades.filter(t => t.profit > 0).length / sellTrades.length * 100) : 0
-    return { startDate, endDate, initialCapital: initial, finalCapital, totalReturn, annualizedReturn, maxDrawdown, totalTrades: tradeHistory.length, winRate }
+
+    let benchmarkReturn = 0
+    if (preloadedStockData && preloadedStockData.length > 0) {
+      const normalized = preloadedStockData
+        .map(d => ({
+          date: typeof d.date === 'string' ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10),
+          close: d.close,
+        }))
+        .filter(d => d.close)
+
+      const startBar = normalized.find(d => d.date >= startDate)
+      const endBars = normalized.filter(d => d.date <= endDate)
+      const endBar = endBars.length > 0 ? endBars[endBars.length - 1] : null
+
+      if (startBar && endBar && startBar.close > 0) {
+        benchmarkReturn = ((endBar.close - startBar.close) / startBar.close) * 100
+      }
+    }
+
+    const excessReturn = totalReturn - benchmarkReturn
+
+    return {
+      startDate,
+      endDate,
+      initialCapital: initial,
+      finalCapital,
+      totalReturn,
+      annualizedReturn,
+      benchmarkReturn,
+      excessReturn,
+      maxDrawdown,
+      totalTrades: tradeHistory.length,
+      winRate,
+    }
   }
 
   const handleSaveSummary = async () => {
@@ -249,6 +298,7 @@ function TradingPage({ user }) {
     if (!user) { message.info('未登录，训练结果不会保存'); navigate('/'); return }
     try {
       await sessionAPI.save({
+        stock_code: config.stockCode,
         start_date: summary.startDate, end_date: summary.endDate,
         initial_capital: summary.initialCapital, final_capital: summary.finalCapital,
         total_return_pct: summary.totalReturn, annualized_return_pct: summary.annualizedReturn,
@@ -285,6 +335,8 @@ function TradingPage({ user }) {
         <Card title="📊 训练结果总结">
           <div className="stat-grid">
             <div className="stat-item"><div className="label">总收益率</div><div className={`value ${summary.totalReturn >= 0 ? 'positive' : 'negative'}`}>{summary.totalReturn >= 0 ? '+' : ''}{summary.totalReturn.toFixed(2)}%</div></div>
+            <div className="stat-item"><div className="label">基准收益率(买入持有)</div><div className={`value ${summary.benchmarkReturn >= 0 ? 'positive' : 'negative'}`}>{summary.benchmarkReturn >= 0 ? '+' : ''}{summary.benchmarkReturn.toFixed(2)}%</div></div>
+            <div className="stat-item"><div className="label">超额收益</div><div className={`value ${summary.excessReturn >= 0 ? 'positive' : 'negative'}`}>{summary.excessReturn >= 0 ? '+' : ''}{summary.excessReturn.toFixed(2)}%</div></div>
             <div className="stat-item"><div className="label">年化收益率</div><div className={`value ${summary.annualizedReturn >= 0 ? 'positive' : 'negative'}`}>{summary.annualizedReturn >= 0 ? '+' : ''}{summary.annualizedReturn.toFixed(2)}%</div></div>
             <div className="stat-item"><div className="label">最大回撤</div><div className="value negative">-{summary.maxDrawdown.toFixed(2)}%</div></div>
             <div className="stat-item"><div className="label">初始资金</div><div className="value">¥{summary.initialCapital.toLocaleString()}</div></div>
